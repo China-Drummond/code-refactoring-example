@@ -1,5 +1,6 @@
 package org.coderead;
 
+import org.coderead.calculator.AbstractPerfCalculator;
 import org.coderead.model.Invoice;
 import org.coderead.model.Performance;
 import org.coderead.model.Play;
@@ -16,8 +17,8 @@ import java.util.Map;
  */
 public class Statement {
 
-    private Invoice invoice;
-    private Map<String, Play> plays;
+    private final Invoice invoice;
+    private final Map<String, Play> plays;
 
     public Statement(Invoice invoice, Map<String, Play> plays) {
         this.invoice = invoice;
@@ -25,46 +26,52 @@ public class Statement {
     }
 
     public String show() {
-        int totalAmount = 0;
-        int volumeCredits = 0;
+        StringBuilder stringBuilder = getResult();
+        stringBuilder.append(String.format("Amount owed is %s\n", formatUSD(getTotalAmount())));
+        stringBuilder.append(String.format("You earned %s credits\n", getVolumeCredits()));
+        return stringBuilder.toString();
+    }
+
+    private StringBuilder getResult() {
         String result = String.format("Statement for %s", invoice.getCustomer());
         StringBuilder stringBuilder = new StringBuilder(result);
-
-        Locale locale = new Locale("en", "US");
-        NumberFormat format = NumberFormat.getCurrencyInstance(locale);
-
         for (Performance performance : invoice.getPerformances()) {
-            Play play = plays.get(performance.getPlayId());
-            int thisAmount = 0;
-            switch (play.getType()) {
-                case "tragedy":
-                    thisAmount = 40000;
-                    if (performance.getAudience() > 30) {
-                        thisAmount += 1000 * (performance.getAudience() - 30);
-                    }
-                    break;
-                case "comedy":
-                    thisAmount = 30000;
-                    if (performance.getAudience() > 20) {
-                        thisAmount += 10000 + 500 *(performance.getAudience() - 20);
-                    }
-                    thisAmount += 300 * performance.getAudience();
-                    break;
-                default:
-                    throw new RuntimeException("unknown type:" + play.getType());
-            }
-
-            volumeCredits += Math.max(performance.getAudience() - 30, 0);
-
-            if ("comedy".equals(play.getType())) {
-                volumeCredits += Math.floor(performance.getAudience() / 5);
-            }
-
-            stringBuilder.append(String.format(" %s: %s (%d seats)\n", play.getName(), format.format(thisAmount/100), performance.getAudience()));
-            totalAmount += thisAmount;
+            stringBuilder.append(formatPerf(performance, plays.get(performance.getPlayId())));
         }
-        stringBuilder.append(String.format("Amount owed is %s\n", format.format(totalAmount/100)));
-        stringBuilder.append(String.format("You earned %s credits\n", volumeCredits));
-        return stringBuilder.toString();
+        return stringBuilder;
+    }
+
+    private int getTotalAmount() {
+        int totalAmount = 0;
+        for (Performance performance : invoice.getPerformances()) {
+            totalAmount += getPerfAmount(performance, plays.get(performance.getPlayId()));
+        }
+        return totalAmount;
+    }
+
+    private int getVolumeCredits() {
+        int volumeCredits = 0;
+        for (Performance performance : invoice.getPerformances()) {
+            volumeCredits += getPerfCredits(performance, plays.get(performance.getPlayId()));
+        }
+        return volumeCredits;
+    }
+
+    private String formatPerf(Performance performance, Play play) {
+        return String.format(" %s: %s (%d seats)\n", play.getName(), formatUSD(getPerfAmount(performance, play)),
+            performance.getAudience());
+    }
+
+    private double getPerfCredits(Performance performance, Play play) {
+        return AbstractPerfCalculator.of(play.getType()).getCredits(performance);
+    }
+
+    private int getPerfAmount(Performance performance, Play play) {
+        return AbstractPerfCalculator.of(play.getType()).getAmount(performance);
+    }
+
+    private String formatUSD(int thisAmount) {
+        Locale locale = new Locale("en", "US");
+        return NumberFormat.getCurrencyInstance(locale).format(thisAmount / 100);
     }
 }

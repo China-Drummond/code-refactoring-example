@@ -1,5 +1,6 @@
 package org.coderead;
 
+import org.coderead.calculator.AbstractPerfCalculator;
 import org.coderead.model.Invoice;
 import org.coderead.model.Performance;
 import org.coderead.model.Play;
@@ -15,7 +16,6 @@ import java.util.Map;
  * @since 2020/10/11 0011
  */
 public class Statement {
-
     private Invoice invoice;
     private Map<String, Play> plays;
 
@@ -25,46 +25,55 @@ public class Statement {
     }
 
     public String show() {
-        int totalAmount = 0;
-        int volumeCredits = 0;
-        String result = String.format("Statement for %s", invoice.getCustomer());
-        StringBuilder stringBuilder = new StringBuilder(result);
-
-        Locale locale = new Locale("en", "US");
-        NumberFormat format = NumberFormat.getCurrencyInstance(locale);
-
-        for (Performance performance : invoice.getPerformances()) {
-            Play play = plays.get(performance.getPlayId());
-            int thisAmount = 0;
-            switch (play.getType()) {
-                case "tragedy":
-                    thisAmount = 40000;
-                    if (performance.getAudience() > 30) {
-                        thisAmount += 1000 * (performance.getAudience() - 30);
-                    }
-                    break;
-                case "comedy":
-                    thisAmount = 30000;
-                    if (performance.getAudience() > 20) {
-                        thisAmount += 10000 + 500 *(performance.getAudience() - 20);
-                    }
-                    thisAmount += 300 * performance.getAudience();
-                    break;
-                default:
-                    throw new RuntimeException("unknown type:" + play.getType());
-            }
-
-            volumeCredits += Math.max(performance.getAudience() - 30, 0);
-
-            if ("comedy".equals(play.getType())) {
-                volumeCredits += Math.floor(performance.getAudience() / 5);
-            }
-
-            stringBuilder.append(String.format(" %s: %s (%d seats)\n", play.getName(), format.format(thisAmount/100), performance.getAudience()));
-            totalAmount += thisAmount;
-        }
-        stringBuilder.append(String.format("Amount owed is %s\n", format.format(totalAmount/100)));
-        stringBuilder.append(String.format("You earned %s credits\n", volumeCredits));
+        StringBuilder stringBuilder = new StringBuilder(formatShowResult());
+        stringBuilder.append(getPerfStat());
+        stringBuilder.append(String.format("Amount owed is %s\n", formatUSD(getTotalAmount())));
+        stringBuilder.append(String.format("You earned %s credits\n", getVolumeCredits()));
         return stringBuilder.toString();
+    }
+
+    private String formatShowResult() {
+        return String.format("Statement for %s", invoice.getCustomer());
+    }
+
+    private StringBuilder getPerfStat() {
+        StringBuilder perfStat = new StringBuilder();
+        for (Performance performance : invoice.getPerformances()) {
+            perfStat.append(formatPerfStat(performance, plays.get(performance.getPlayId()),
+                getPerfAmount(performance, plays.get(performance.getPlayId()).getType())));
+        }
+        return perfStat;
+    }
+
+    private int getTotalAmount() {
+        int totalAmount = 0;
+        for (Performance performance : invoice.getPerformances()) {
+            totalAmount += getPerfAmount(performance, plays.get(performance.getPlayId()).getType());
+        }
+        return totalAmount;
+    }
+
+    private int getVolumeCredits() {
+        int volumeCredits = 0;
+        for (Performance performance : invoice.getPerformances()) {
+            volumeCredits += getPerfCredits(performance, plays.get(performance.getPlayId()).getType());
+        }
+        return volumeCredits;
+    }
+
+    private String formatPerfStat(Performance performance, Play play, int thisAmount) {
+        return String.format(" %s: %s (%d seats)\n", play.getName(), formatUSD(thisAmount), performance.getAudience());
+    }
+
+    private double getPerfCredits(Performance performance, String playType) {
+        return AbstractPerfCalculator.of(playType).getCredits(performance);
+    }
+
+    private int getPerfAmount(Performance performance, String playType) {
+        return AbstractPerfCalculator.of(playType).getAmount(performance);
+    }
+
+    private String formatUSD(int amount) {
+        return NumberFormat.getCurrencyInstance(new Locale("en", "US")).format(amount / 100);
     }
 }
